@@ -107,6 +107,20 @@ h1 {
   color: var(--danger);
 }
 
+.import-action {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+}
+
+.import-notice {
+  max-width: 190px;
+  color: var(--muted);
+  font-size: 0.66rem;
+  line-height: 1.3;
+}
+
 /* =====================================================
    3. BOTÕES
 ===================================================== */

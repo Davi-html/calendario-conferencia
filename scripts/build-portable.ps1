@@ -41,6 +41,7 @@ try {
   }
 
   $outputPath = Join-Path $projectRoot "release\Calendario.exe"
+  $iconPath = Join-Path $projectRoot "assets\calendar.ico"
   & $compiler `
     /nologo `
     /target:winexe `
@@ -48,6 +49,7 @@ try {
     /reference:System.IO.Compression.dll `
     /reference:System.Windows.Forms.dll `
     /reference:System.Drawing.dll `
+    "/win32icon:$iconPath" `
     "/resource:$payloadPath,Calendario.Payload.zip" `
     "/out:$outputPath" `
     $generatedSource

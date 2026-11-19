@@ -1099,9 +1099,14 @@ function clearEntrada() {
           hidden
           onChange={handleFile}
         />
-        <button className="btn" onClick={() => fileInput.current?.click()}>
-          <span aria-hidden="true">⇪</span> Importar Excel
-        </button>
+        <div className="import-action">
+          <button className="btn" onClick={() => fileInput.current?.click()}>
+            <span aria-hidden="true">⇪</span> Importar Excel
+          </button>
+          <span className="import-notice">
+            Relatório de importação: modelo sintético, visualização e agrupamento por prestador.
+          </span>
+        </div>
         <button className="btn" onClick={clearAll} disabled={totalCards === 0}>
           <span aria-hidden="true">🗑</span> Excluir tudo
         </button>

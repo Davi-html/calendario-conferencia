@@ -20,10 +20,12 @@
     "files": [
       "dist/**/*",
       "electron/**/*",
+      "assets/**/*",
       "package.json",
       "!**/*.map"
     ],
     "win": {
+      "icon": "assets/calendar.ico",
       "target": [
         {
           "target": "portable",

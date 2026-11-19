@@ -9,6 +9,7 @@ function createWindow() {
     minWidth: 1000,
     minHeight: 650,
     backgroundColor: "#f3f1ec",
+    icon: path.join(__dirname, "../assets/calendar.ico"),
     autoHideMenuBar: true,
     show: false,
     webPreferences: {
