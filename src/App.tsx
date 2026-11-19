@@ -1,5 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import * as XLSX from "xlsx-js-style";
+import {
+  initializeSharedStorage,
+  saveSharedData,
+  sharedStorageConfigured,
+  sharedStoragePartiallyConfigured,
+  subscribeSharedStorage,
+} from "./sharedStorage";
 
 
 type Card = { id: string; prestador: string; qtd: number; hora?: string };
@@ -30,6 +37,8 @@ const emptyRules: AutoFillRules = {
   groups: [],
   blocked: [],
 };
+
+type SyncStatus = "local" | "connecting" | "synced" | "error";
 
 function loadRules(): AutoFillRules {
   try {
@@ -66,6 +75,63 @@ function loadBoard(): BoardState {
   } catch {
     return createDefaults();
   }
+}
+
+function isBoardState(value: unknown): value is BoardState {
+  if (!value || typeof value !== "object" || !Array.isArray((value as BoardState).cols)) {
+    return false;
+  }
+  const { cols } = value as BoardState;
+  return cols.some((column) => column?.locked) && cols.every(
+    (column) =>
+      Boolean(column) &&
+      typeof column.id === "string" &&
+      typeof column.title === "string" &&
+      Array.isArray(column.cards) &&
+      column.cards.every(
+        (card) =>
+          typeof card.id === "string" &&
+          typeof card.prestador === "string" &&
+          typeof card.qtd === "number" &&
+          Number.isFinite(card.qtd) &&
+          (card.hora === undefined || typeof card.hora === "string"),
+      ),
+  );
+}
+
+function isAutoFillRules(value: unknown): value is AutoFillRules {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as AutoFillRules;
+  return (
+    Array.isArray(candidate.groups) &&
+    candidate.groups.every(
+      (group) =>
+        Boolean(group) &&
+        typeof group.id === "string" &&
+        typeof group.name === "string" &&
+        Array.isArray(group.providers) &&
+        group.providers.every((provider) => typeof provider === "string"),
+    ) &&
+    Array.isArray(candidate.blocked) &&
+    candidate.blocked.every(
+      (rule) =>
+        Boolean(rule) &&
+        typeof rule.id === "string" &&
+        typeof rule.provider === "string" &&
+        typeof rule.columnId === "string",
+    )
+  );
+}
+
+function getFirebaseErrorMessage(error: unknown) {
+  const code =
+    typeof error === "object" && error !== null && "code" in error
+      ? error.code
+      : undefined;
+  if (code === "permission-denied") {
+    return "Permissão negada. No Firebase Console, abra Firestore Database → Rules, cole o conteúdo de firestore.rules e clique em Publish. Confira também se o Project ID do .env é o mesmo projeto.";
+  }
+  return error instanceof Error ? error.message : String(error);
 }
 
 /* ------------------------------------------------------------------ */
@@ -105,6 +171,17 @@ function transformRows(rows: unknown[][]): Omit<Card, "id">[] {
 
 export default function App() {
   const [board, setBoard] = useState<BoardState>(loadBoard);
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>(
+    sharedStorageConfigured ? "connecting" : sharedStoragePartiallyConfigured ? "error" : "local",
+  );
+  const [syncError, setSyncError] = useState(
+    sharedStoragePartiallyConfigured
+      ? "Preencha a API key, o Project ID e o App ID do Firebase para ativar o compartilhamento."
+      : "",
+  );
+  const [storageReady, setStorageReady] = useState(!sharedStorageConfigured);
+  const [remoteLoaded, setRemoteLoaded] = useState(false);
+  const remoteLoadedRef = useRef(false);
   const [editing, setEditing] = useState<Editing | null>(null);
   const [prestador, setPrestador] = useState("");
   const [qtd, setQtd] = useState("0");
@@ -138,6 +215,76 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem(RULES_KEY, JSON.stringify(rules));
   }, [rules]);
+
+  useEffect(() => {
+    if (!sharedStorageConfigured) return;
+
+    let active = true;
+    let unsubscribe = () => {};
+    const loadedDocuments = new Set<string>();
+
+    const showSyncError = (message: string) => {
+      if (!active) return;
+      setSyncError(message);
+      setSyncStatus("error");
+      setStorageReady(true);
+    };
+
+    const applyRemoteDocument = (key: string, value: unknown) => {
+      if (key === "board") {
+        if (!isBoardState(value)) {
+          showSyncError("O quadro salvo no Firebase está inválido.");
+          return false;
+        }
+        setBoard((current) =>
+          JSON.stringify(current) === JSON.stringify(value) ? current : value,
+        );
+        return true;
+      }
+
+      if (key !== "rules") return false;
+      if (!isAutoFillRules(value)) {
+        showSyncError("As regras salvas no Firebase estão inválidas.");
+        return false;
+      }
+      setRules((current) =>
+        JSON.stringify(current) === JSON.stringify(value) ? current : value,
+      );
+      return true;
+    };
+
+    async function connectSharedStorage() {
+      try {
+        if (!active) return;
+        await initializeSharedStorage(board, rules);
+        if (!active) return;
+        unsubscribe = subscribeSharedStorage((key, value) => {
+          if (!active || !applyRemoteDocument(key, value)) return;
+          loadedDocuments.add(key);
+          if (loadedDocuments.size === 2) {
+            remoteLoadedRef.current = true;
+            setRemoteLoaded(true);
+            setStorageReady(true);
+            setSyncError("");
+            setSyncStatus("synced");
+          }
+        }, (error) => {
+          showSyncError(`Falha na conexão com o Firebase: ${getFirebaseErrorMessage(error)}`);
+        });
+      } catch (error) {
+        if (!active) return;
+        setStorageReady(true);
+        showSyncError(`Não foi possível carregar os dados do Firebase: ${getFirebaseErrorMessage(error)}`);
+      }
+    }
+
+    void connectSharedStorage();
+
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, []);
 
   function addGroup() {
     if (!groupName.trim() || selectedProviders.length < 2) {
@@ -437,12 +584,47 @@ export default function App() {
   };
 
   useEffect(() => {
+    if (!storageReady) return;
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(board));
     } catch {
-      // O quadro continua funcionando mesmo se o armazenamento estiver indisponível.
+      setSyncError("Não foi possível salvar uma cópia local deste quadro.");
     }
-  }, [board]);
+  }, [board, storageReady]);
+
+  useEffect(() => {
+    if (!sharedStorageConfigured || !remoteLoaded) return;
+    const timeout = window.setTimeout(async () => {
+      try {
+        await saveSharedData("board", board);
+        setSyncError("");
+        setSyncStatus("synced");
+      } catch (error) {
+        setSyncError(
+          `Falha ao sincronizar o quadro: ${error instanceof Error ? error.message : String(error)}`,
+        );
+        setSyncStatus("error");
+      }
+    }, 350);
+    return () => window.clearTimeout(timeout);
+  }, [board, remoteLoaded]);
+
+  useEffect(() => {
+    if (!sharedStorageConfigured || !remoteLoaded) return;
+    const timeout = window.setTimeout(async () => {
+      try {
+        await saveSharedData("rules", rules);
+        setSyncError("");
+        setSyncStatus("synced");
+      } catch (error) {
+        setSyncError(
+          `Falha ao sincronizar as regras: ${error instanceof Error ? error.message : String(error)}`,
+        );
+        setSyncStatus("error");
+      }
+    }, 350);
+    return () => window.clearTimeout(timeout);
+  }, [rules, remoteLoaded]);
 
   const totalCards = useMemo(
     () => board.cols.reduce((sum, col) => sum + col.cards.length, 0),
@@ -779,6 +961,19 @@ function clearEntrada() {
             {totalQtd.toLocaleString("pt-BR")} {totalQtd === 1 ? "procedimento" : "procedimentos"} no total
             {importMsg && ` · ${importMsg}`}
           </p>
+          <div
+            className={`sync-status ${syncStatus}`}
+            title={syncError || undefined}
+            role={syncStatus === "error" ? "alert" : "status"}
+          >
+            {syncStatus === "synced"
+              ? "● Compartilhado · sincronizado"
+              : syncStatus === "connecting"
+                ? "● Conectando ao compartilhamento..."
+                : syncStatus === "error"
+                  ? `● Falha na sincronização${syncError ? ` · ${syncError}` : ""}`
+                  : "● Somente neste computador · configure o Firebase"}
+          </div>
         </div>
         <input
           ref={fileInput}

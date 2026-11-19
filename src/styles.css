@@ -95,6 +95,20 @@ h1 {
   font-size: 0.88rem;
 }
 
+.sync-status {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.sync-status.synced {
+  color: var(--accent);
+}
+
+.sync-status.error {
+  color: var(--danger);
+}
+
 /* =====================================================
    3. BOTÕES
 ===================================================== */

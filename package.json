@@ -41,9 +41,15 @@
   },
   "dependencies": {
     "@vitejs/plugin-react": "^6.3.0",
+    "firebase": "^13.4.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "vite": "^8.3.8",
     "xlsx-js-style": "^1.2.0"
+  },
+  "overrides": {
+    "@firebase/firestore": {
+      "@grpc/grpc-js": "^1.13.6"
+    }
   }
 }
