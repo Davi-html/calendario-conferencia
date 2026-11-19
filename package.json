@@ -8,7 +8,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "electron": "electron .",
-    "dist": "npm run build && electron-builder"
+    "dist": "npm run build && electron-builder --win nsis",
+    "dist:portable": "npm run build && electron-builder --win portable"
   },
   "build": {
     "appId": "com.calendario.desktop",
@@ -19,32 +20,35 @@
     "files": [
       "dist/**/*",
       "electron/**/*",
-      "package.json"
+      "package.json",
+      "!**/*.map"
     ],
     "win": {
       "target": [
         {
-          "target": "portable",
-          "arch": [
-            "x64"
-          ]
+          "target": "nsis",
+          "arch": ["x64"]
         }
       ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
     }
   },
   "devDependencies": {
+    "@vitejs/plugin-react": "^6.3.0",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "electron": "^45.3.3",
     "electron-builder": "^26.18.0",
-    "typescript": "^7.0.2"
+    "typescript": "^7.0.2",
+    "vite": "^8.3.8"
   },
   "dependencies": {
-    "@vitejs/plugin-react": "^6.3.0",
     "firebase": "^13.4.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
-    "vite": "^8.3.8",
     "xlsx-js-style": "^1.2.0"
   },
   "overrides": {

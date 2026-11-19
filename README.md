@@ -78,13 +78,19 @@ npm run dev
 npm run dist
 ```
 
-O arquivo executável será gerado na pasta:
+Esse comando gera um instalador Windows x64 na pasta:
 
 ```text
 release/
 ```
 
-O projeto utiliza o Electron Builder para empacotar a aplicação em um executável portátil para Windows x64.
+Instale uma vez e abra pelo atalho do Calendário: essa versão evita extrair o aplicativo inteiro a cada abertura. Para gerar também o executável portátil de arquivo único, que pode demorar mais para iniciar, use:
+
+```bash
+npm run dist:portable
+```
+
+O projeto utiliza o Electron Builder para empacotar a aplicação para Windows x64.
 
 ---
 

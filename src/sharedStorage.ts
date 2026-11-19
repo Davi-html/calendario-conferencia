@@ -1,12 +1,3 @@
-import { getApp, getApps, initializeApp } from "firebase/app";
-import {
-  doc,
-  getFirestore,
-  onSnapshot,
-  runTransaction,
-  setDoc,
-} from "firebase/firestore";
-
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY?.trim() ?? "",
   projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID?.trim() ?? "",
@@ -18,32 +9,32 @@ export const sharedStorageConfigured = configValues.every(Boolean);
 export const sharedStoragePartiallyConfigured =
   configValues.some(Boolean) && !sharedStorageConfigured;
 
-const database = sharedStorageConfigured
-  ? getFirestore(
-      getApps().length > 0
-        ? getApp()
-        : initializeApp(firebaseConfig),
-    )
-  : null;
-
 export type SharedDataKey = "board" | "rules";
 
-function getDatabase() {
-  if (!database) throw new Error("O Firebase não está configurado.");
-  return database;
-}
-
-function getDocument(key: SharedDataKey) {
-  return doc(getDatabase(), "app_data", key);
+async function getFirebaseRuntime() {
+  if (!sharedStorageConfigured) {
+    throw new Error("O Firebase não está configurado.");
+  }
+  const [appSdk, firestoreSdk] = await Promise.all([
+    import("firebase/app"),
+    import("firebase/firestore"),
+  ]);
+  const app = appSdk.getApps().length > 0
+    ? appSdk.getApp()
+    : appSdk.initializeApp(firebaseConfig);
+  return {
+    database: firestoreSdk.getFirestore(app),
+    firestore: firestoreSdk,
+  };
 }
 
 export async function initializeSharedStorage(board: unknown, rules: unknown) {
+  const { database, firestore } = await getFirebaseRuntime();
   const defaults: Record<SharedDataKey, unknown> = { board, rules };
-  const firestore = getDatabase();
   await Promise.all(
     (Object.keys(defaults) as SharedDataKey[]).map((key) =>
-      runTransaction(firestore, async (transaction) => {
-        const reference = getDocument(key);
+      firestore.runTransaction(database, async (transaction) => {
+        const reference = firestore.doc(database, "app_data", key);
         const snapshot = await transaction.get(reference);
         if (!snapshot.exists()) transaction.set(reference, { data: defaults[key] });
       }),
@@ -51,13 +42,14 @@ export async function initializeSharedStorage(board: unknown, rules: unknown) {
   );
 }
 
-export function subscribeSharedStorage(
+export async function subscribeSharedStorage(
   onUpdate: (key: SharedDataKey, data: unknown) => void,
   onError: (error: Error) => void,
 ) {
+  const { database, firestore } = await getFirebaseRuntime();
   const unsubscribers = (["board", "rules"] as const).map((key) =>
-    onSnapshot(
-      getDocument(key),
+    firestore.onSnapshot(
+      firestore.doc(database, "app_data", key),
       (snapshot) => {
         if (!snapshot.exists()) {
           onError(new Error(`O documento compartilhado "${key}" não existe.`));
@@ -72,5 +64,6 @@ export function subscribeSharedStorage(
 }
 
 export async function saveSharedData(key: SharedDataKey, data: unknown) {
-  await setDoc(getDocument(key), { data });
+  const { database, firestore } = await getFirebaseRuntime();
+  await firestore.setDoc(firestore.doc(database, "app_data", key), { data });
 }

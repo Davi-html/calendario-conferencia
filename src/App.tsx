@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import * as XLSX from "xlsx-js-style";
 import {
   initializeSharedStorage,
   saveSharedData,
@@ -258,7 +257,7 @@ export default function App() {
         if (!active) return;
         await initializeSharedStorage(board, rules);
         if (!active) return;
-        unsubscribe = subscribeSharedStorage((key, value) => {
+        const stopSubscription = await subscribeSharedStorage((key, value) => {
           if (!active || !applyRemoteDocument(key, value)) return;
           loadedDocuments.add(key);
           if (loadedDocuments.size === 2) {
@@ -271,6 +270,11 @@ export default function App() {
         }, (error) => {
           showSyncError(`Falha na conexão com o Firebase: ${getFirebaseErrorMessage(error)}`);
         });
+        if (!active) {
+          stopSubscription();
+          return;
+        }
+        unsubscribe = stopSubscription;
       } catch (error) {
         if (!active) return;
         setStorageReady(true);
@@ -278,10 +282,13 @@ export default function App() {
       }
     }
 
-    void connectSharedStorage();
+    const startupTimer = window.setTimeout(() => {
+      void connectSharedStorage();
+    }, 150);
 
     return () => {
       active = false;
+      window.clearTimeout(startupTimer);
       unsubscribe();
     };
   }, []);
@@ -502,9 +509,10 @@ export default function App() {
     }));
   }
 
-  const downloadTable = () => {
+  const downloadTable = async () => {
     if (visibleCols.length === 0) return;
 
+    const XLSX = await import("xlsx-js-style");
     const maxRows = Math.max(1, ...visibleCols.map((col) => col.cards.length));
 
     const titleRow = visibleCols.flatMap((col) => [col.title, "", ""]);
@@ -649,6 +657,7 @@ export default function App() {
     if (!file) return;
 
     try {
+      const XLSX = await import("xlsx-js-style");
       const workbook = XLSX.read(await file.arrayBuffer());
       const sheet = workbook.Sheets[workbook.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: "" });
