@@ -213,21 +213,56 @@ h1 {
   flex: 1;
 }
 
-.column-title {
+.column-date-picker {
+  position: relative;
   flex: 1;
   min-width: 0;
-  padding: 3px 5px;
+  border-radius: 6px;
+}
+
+.column-title {
+  width: 100%;
   border: 0;
+  text-align: left;
+  cursor: pointer;
+  display: block;
+  min-width: 0;
+  padding: 3px 5px;
   border-radius: 6px;
   background: transparent;
   color: var(--ink);
   font-weight: 700;
   font-size: 0.9rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.column-title:hover,
-.column-title:focus {
+.column-date-picker:hover,
+.column-date-picker:focus-within {
   background: var(--surface);
+}
+
+.column-date-picker input[type="date"] {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  clip-path: inset(50%);
+  pointer-events: none;
+}
+
+.column-title:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.date-picker-indicator {
+  float: right;
+  margin-left: 6px;
+  color: var(--muted);
 }
 
 .column-total {

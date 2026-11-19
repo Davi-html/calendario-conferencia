@@ -9,7 +9,7 @@ import {
 
 
 type Card = { id: string; prestador: string; qtd: number; hora?: string };
-type Column = { id: string; title: string; cards: Card[]; locked?: boolean };
+type Column = { id: string; title: string; date?: string; cards: Card[]; locked?: boolean };
 type BoardState = { cols: Column[] };
 type Editing = { colId: string; cardId: string | null };
 
@@ -22,7 +22,8 @@ type ProviderGroup = {
 type BlockedProvider = {
   id: string;
   provider: string;
-  columnId: string;
+  columnId?: string;
+  weekday?: number;
 };
 
 type AutoFillRules = {
@@ -36,6 +37,25 @@ const emptyRules: AutoFillRules = {
   groups: [],
   blocked: [],
 };
+
+const weekdays = [
+  "domingo",
+  "segunda-feira",
+  "terça-feira",
+  "quarta-feira",
+  "quinta-feira",
+  "sexta-feira",
+  "sábado",
+];
+const weekdayRecurrences = [
+  "aos domingos",
+  "às segundas-feiras",
+  "às terças-feiras",
+  "às quartas-feiras",
+  "às quintas-feiras",
+  "às sextas-feiras",
+  "aos sábados",
+];
 
 type SyncStatus = "local" | "connecting" | "synced" | "error";
 
@@ -86,6 +106,7 @@ function isBoardState(value: unknown): value is BoardState {
       Boolean(column) &&
       typeof column.id === "string" &&
       typeof column.title === "string" &&
+      (column.date === undefined || /^\d{4}-\d{2}-\d{2}$/.test(column.date)) &&
       Array.isArray(column.cards) &&
       column.cards.every(
         (card) =>
@@ -117,8 +138,77 @@ function isAutoFillRules(value: unknown): value is AutoFillRules {
         Boolean(rule) &&
         typeof rule.id === "string" &&
         typeof rule.provider === "string" &&
-        typeof rule.columnId === "string",
+        (typeof rule.columnId === "string" ||
+          (rule.weekday !== undefined &&
+            Number.isInteger(rule.weekday) &&
+            rule.weekday >= 0 &&
+            rule.weekday <= 6)),
     )
+  );
+}
+
+function formatColumnDate(date: string | undefined) {
+  if (!date) return "Escolher data";
+  const [year, month, day] = date.split("-").map(Number);
+  const value = new Date(year, month - 1, day);
+  const dateLabel = new Intl.DateTimeFormat("pt-BR").format(value);
+  const weekday = weekdays[value.getDay()];
+  return `${dateLabel} - ${weekday}`;
+}
+
+function weekdayFromDate(date: string | undefined) {
+  if (!date) return undefined;
+  const [year, month, day] = date.split("-").map(Number);
+  return new Date(year, month - 1, day).getDay();
+}
+
+function ColumnDatePicker({
+  date,
+  onChange,
+}: {
+  date?: string;
+  onChange: (date: string) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  function openPicker() {
+    const input = inputRef.current;
+    if (!input) return;
+
+    try {
+      if (typeof input.showPicker === "function") {
+        input.showPicker();
+        return;
+      }
+    } catch {
+      // Fall back to the native input click if the picker API is unavailable.
+    }
+
+    input.focus();
+    input.click();
+  }
+
+  return (
+    <div className="column-date-picker">
+      <button
+        type="button"
+        className="column-title"
+        aria-label={`Escolher data para ${formatColumnDate(date)}`}
+        onClick={openPicker}
+      >
+        {formatColumnDate(date)}
+        <span className="date-picker-indicator" aria-hidden="true">▾</span>
+      </button>
+      <input
+        ref={inputRef}
+        className="column-date-input"
+        type="date"
+        value={date ?? ""}
+        aria-hidden="true"
+        tabIndex={-1}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </div>
   );
 }
 
@@ -200,7 +290,7 @@ export default function App() {
   const [selectedProviders, setSelectedProviders] = useState<string[]>([]);
 
   const [blockedProvider, setBlockedProvider] = useState("");
-  const [blockedColumn, setBlockedColumn] = useState("");
+  const [blockedWeekday, setBlockedWeekday] = useState("");
   const [providerSearch, setProviderSearch] = useState("");
   const [providerListOpen, setProviderListOpen] = useState(false);
   const [entradaAberta, setEntradaAberta] = useState(false);
@@ -335,12 +425,13 @@ export default function App() {
   }
 
   function addBlockedProvider() {
-    if (!blockedProvider || !blockedColumn) return;
+    if (!blockedProvider || blockedWeekday === "") return;
+    const weekday = Number(blockedWeekday);
 
     const exists = rules.blocked.some(
       (rule) =>
-        rule.provider === blockedProvider &&
-        rule.columnId === blockedColumn
+        rule.provider.trim().toLowerCase() === blockedProvider.trim().toLowerCase() &&
+        rule.weekday === weekday
     );
 
     if (exists) return;
@@ -352,13 +443,13 @@ export default function App() {
         {
           id: uid(),
           provider: blockedProvider,
-          columnId: blockedColumn,
+          weekday,
         },
       ],
     }));
 
     setBlockedProvider("");
-    setBlockedColumn("");
+    setBlockedWeekday("");
   }
 
   function removeGroup(id: string) {
@@ -436,7 +527,9 @@ export default function App() {
               (rule) =>
                 rule.provider.trim().toLowerCase() ===
                 card.prestador.trim().toLowerCase() &&
-                rule.columnId === day.id
+                ((rule.weekday !== undefined &&
+                  rule.weekday === weekdayFromDate(day.date)) ||
+                  rule.columnId === day.id)
             )
           )
       ),
@@ -771,15 +864,17 @@ function clearEntrada() {
   function addColumn() {
     setBoard((current) => ({
       ...current,
-      cols: [...current.cols, { id: uid(), title: "Nova coluna", cards: [] }],
+      cols: [...current.cols, { id: uid(), title: "Escolher data", cards: [] }],
     }));
   }
 
-  function renameColumn(colId: string, value: string) {
+  function setColumnDate(colId: string, date: string) {
     setBoard((current) => ({
       ...current,
       cols: current.cols.map((col) =>
-        col.id === colId && !col.locked ? { ...col, title: value.trim() || "Sem nome" } : col,
+        col.id === colId && !col.locked
+          ? { ...col, date: date || undefined, title: formatColumnDate(date || undefined) }
+          : col,
       ),
     }));
   }
@@ -1045,13 +1140,9 @@ function clearEntrada() {
             >
               <div className="column-header">
                 <div className="column-heading-info">
-                  <input
-                    className="column-title"
-                    aria-label="Nome da coluna"
-                    value={col.title}
-                    readOnly={col.locked}
-                    onChange={(event) => renameColumn(col.id, event.target.value)}
-                    onBlur={(event) => renameColumn(col.id, event.target.value)}
+                  <ColumnDatePicker
+                    date={col.date}
+                    onChange={(date) => setColumnDate(col.id, date)}
                   />
 
                   <span className="column-total">
@@ -1334,7 +1425,7 @@ function clearEntrada() {
 
             <hr />
 
-            <h3>2. Restrições por data</h3>
+            <h3>2. Restrições por dia da semana</h3>
 
             <label>
               Prestador
@@ -1352,15 +1443,15 @@ function clearEntrada() {
             </label>
 
             <label>
-              Data em que não poderá ser alocado
+              Dia da semana em que não poderá ser alocado
               <select
-                value={blockedColumn}
-                onChange={(e) => setBlockedColumn(e.target.value)}
+                value={blockedWeekday}
+                onChange={(e) => setBlockedWeekday(e.target.value)}
               >
-                <option value="">Selecione uma data</option>
-                {visibleCols.map((col) => (
-                  <option key={col.id} value={col.id}>
-                    {col.title}
+                <option value="">Selecione um dia da semana</option>
+                {weekdays.map((weekday, index) => (
+                  <option key={weekday} value={index}>
+                    {weekday}
                   </option>
                 ))}
               </select>
@@ -1379,9 +1470,10 @@ function clearEntrada() {
               )}
 
               {rules.blocked.map((rule) => {
-                const day = visibleCols.find(
-                  (col) => col.id === rule.columnId
-                );
+                const day = visibleCols.find((col) => col.id === rule.columnId);
+                const weekday = rule.weekday === undefined
+                  ? undefined
+                  : weekdayRecurrences[rule.weekday];
 
                 return (
                   <div key={rule.id} className="rule-card">
@@ -1390,13 +1482,15 @@ function clearEntrada() {
                     <div className="rule-card-content">
                       <strong>{rule.provider}</strong>
                       <span className="rule-card-description">
-                        Não poderá ser alocado nesta data
+                        Não poderá ser alocado {weekday ?? "nesta data"}
                       </span>
-                      <div className="rule-tags">
-                        <span className="rule-tag date-tag">
-                          {day?.title ?? "Data removida"}
-                        </span>
-                      </div>
+                      {!weekday && (
+                        <div className="rule-tags">
+                          <span className="rule-tag date-tag">
+                            {day?.title ?? "Data removida"}
+                          </span>
+                        </div>
+                      )}
                     </div>
 
                     <button

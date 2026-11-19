@@ -20,6 +20,8 @@ Não é necessário instalar Node.js, React ou qualquer outra dependência para 
 
 Com o Firebase Firestore configurado, o quadro e as regras ficam em um banco compartilhado pela internet. As alterações aparecem nos outros computadores em tempo real, inclusive no aplicativo Electron. Sem essa configuração, o app continua salvando localmente no computador e indica isso na tela.
 
+Para criar uma coluna, clique em **Nova data** e depois no título **Escolher data** para abrir o calendário. O nome da coluna é preenchido automaticamente com a data e o dia da semana. Nas regras, as restrições de prestadores são recorrentes: escolha um dia da semana para impedir o autopreenchimento nesse dia, em qualquer semana ou ano.
+
 Para ativar o compartilhamento:
 
 1. Crie um projeto no [Firebase Console](https://console.firebase.google.com/).
