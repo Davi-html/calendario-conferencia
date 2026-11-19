@@ -8,6 +8,7 @@ function createWindow() {
     height: 900,
     minWidth: 1000,
     minHeight: 650,
+    backgroundColor: "#f3f1ec",
     autoHideMenuBar: true,
     show: false,
     webPreferences: {
@@ -18,8 +19,16 @@ function createWindow() {
 
   win.loadFile(path.join(__dirname, "../dist/index.html"));
 
+  win.webContents.once("did-start-loading", () => {
+    if (!win.isDestroyed()) win.show();
+  });
+
+  win.webContents.once("dom-ready", () => {
+    if (!win.isDestroyed() && !win.isVisible()) win.show();
+  });
+
   win.once("ready-to-show", () => {
-    win.show();
+    if (!win.isDestroyed() && !win.isVisible()) win.show();
   });
 }
 

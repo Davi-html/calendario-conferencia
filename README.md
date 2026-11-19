@@ -14,7 +14,7 @@ Não é necessário instalar Node.js, React ou qualquer outra dependência para 
 4. Clique no executável para baixá-lo.
 5. Após o download, abra o arquivo para iniciar o Calendário.
 
-**Importante:** baixe o executável portátil `Calendario <versão>.exe`. Ele pode ser movido para outra pasta e aberto de lá. Não copie `Calendario.exe` de dentro de `win-unpacked`: esse executável depende dos arquivos ao redor. O instalador `Calendario Setup <versão>.exe`, se disponível, é outra opção; ele instala o app e cria um atalho.
+**Importante:** baixe o executável portátil `Calendario.exe`. Ele pode ser movido para outra pasta e aberto de lá. Na primeira abertura, o app prepara uma cópia no perfil do usuário; nas próximas, abre essa cópia em cache sem extrair tudo novamente. Não copie `Calendario.exe` de dentro de `win-unpacked`: esse é o executável interno do Electron e depende dos arquivos ao redor. O instalador `Calendario Setup <versão>.exe`, se disponível, é outra opção.
 
 ### Armazenamento dos dados
 
@@ -86,7 +86,7 @@ Esse comando gera um único executável portátil Windows x64 na pasta:
 release/
 ```
 
-O arquivo pode ser movido para outra pasta e aberto sozinho. Como é portátil, ele extrai o aplicativo ao iniciar e pode demorar um pouco mais. Para gerar um instalador que instala todos os arquivos e cria um atalho, use:
+O arquivo pode ser movido para outra pasta e aberto sozinho. Na primeira execução, ele mostra uma janela de preparação e extrai os arquivos em `%LOCALAPPDATA%\Calendario\portable\`; nas seguintes, reutiliza essa cópia para abrir mais rápido. Cada versão mantém seu próprio cache. Para gerar um instalador que instala todos os arquivos e cria um atalho, use:
 
 ```bash
 npm run dist:setup

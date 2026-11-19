@@ -1050,10 +1050,23 @@ function clearEntrada() {
           type="button"
           className="entrada-drawer-toggle"
           onClick={() => setEntradaAberta((current) => !current)}
-          title={entradaAberta ? "Recolher entrada" : "Abrir entrada"}
-          aria-label={entradaAberta ? "Recolher entrada" : "Abrir entrada"}
+          title={
+            entradaAberta
+              ? "Recolher entrada"
+              : `Abrir entrada${sourceCards.length > 0 ? ` · ${sourceCards.length} prestadores` : ""}`
+          }
+          aria-label={
+            entradaAberta
+              ? "Recolher entrada"
+              : `Abrir entrada${sourceCards.length > 0 ? `, ${sourceCards.length} prestadores disponíveis` : ""}`
+          }
         >
           {entradaAberta ? "‹" : "›"}
+          {!entradaAberta && sourceCards.length > 0 && (
+            <span className="entrada-count-badge" aria-hidden="true">
+              {sourceCards.length}
+            </span>
+          )}
         </button>
       </div>
       <header className="topbar">

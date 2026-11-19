@@ -5,9 +5,84 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#f3f1ec" />
     <title>Calendario Conferencia</title>
+    <style>
+      #startup-screen {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: grid;
+        place-items: center;
+        background: #f3f1ec;
+        color: #20282b;
+        font-family: "Segoe UI", sans-serif;
+        opacity: 1;
+        transition: opacity 220ms ease, visibility 220ms ease;
+      }
+
+      #startup-screen.startup-hidden {
+        visibility: hidden;
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      .startup-content {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 14px;
+        padding: 24px;
+        text-align: center;
+      }
+
+      .startup-spinner {
+        width: 34px;
+        height: 34px;
+        border: 3px solid #d9d5cb;
+        border-top-color: #1f6f6b;
+        border-radius: 50%;
+        animation: startup-spin 800ms linear infinite;
+      }
+
+      .startup-title {
+        margin: 0;
+        font-size: 18px;
+        font-weight: 700;
+      }
+
+      .startup-message {
+        margin: 0;
+        color: #788184;
+        font-size: 13px;
+      }
+
+      @keyframes startup-spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .startup-spinner {
+          animation-duration: 1800ms;
+        }
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>
+    <div id="startup-screen" role="status" aria-live="polite">
+      <div class="startup-content">
+        <div class="startup-spinner" aria-hidden="true"></div>
+        <p class="startup-title">Abrindo o Calendário</p>
+        <p class="startup-message" id="startup-message">Preparando o quadro...</p>
+      </div>
+    </div>
+    <script>
+      window.setTimeout(() => {
+        const message = document.getElementById("startup-message");
+        if (message) message.textContent = "Ainda carregando. Aguarde um instante...";
+      }, 4000);
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
