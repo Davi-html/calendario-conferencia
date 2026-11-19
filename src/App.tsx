@@ -128,6 +128,12 @@ export default function App() {
   const [providerSearch, setProviderSearch] = useState("");
   const [providerListOpen, setProviderListOpen] = useState(false);
   const [entradaAberta, setEntradaAberta] = useState(false);
+  const [confirmModal, setConfirmModal] = useState<{
+  title: string;
+  message: string;
+  confirmText: string;
+  action: () => void;
+} | null>(null);
 
   useEffect(() => {
     localStorage.setItem(RULES_KEY, JSON.stringify(rules));
@@ -520,14 +526,56 @@ export default function App() {
   }
 
   function clearAll() {
-    if (totalCards === 0) return;
-    if (!window.confirm(`Excluir todos os ${totalCards} cartões do quadro?`)) return;
-    setBoard((current) => ({
-      ...current,
-      cols: current.cols.map((col) => ({ ...col, cards: [] })),
-    }));
-    setImportMsg(null);
-  }
+  const cardsInDates = visibleCols.reduce(
+    (sum, col) => sum + col.cards.length,
+    0
+  );
+
+  if (cardsInDates === 0) return;
+
+  setConfirmModal({
+    title: "Devolver prestadores?",
+    message: `Os ${cardsInDates} prestadores distribuídos nas datas voltarão para Entrada (Excel). Nenhum prestador será excluído definitivamente.`,
+    confirmText: "Devolver prestadores",
+    action: () => {
+      setBoard((current) => {
+        const cardsFromDates = current.cols
+          .filter((col) => !col.locked)
+          .flatMap((col) => col.cards);
+
+        return {
+          ...current,
+          cols: current.cols.map((col) =>
+            col.locked
+              ? { ...col, cards: [...col.cards, ...cardsFromDates] }
+              : { ...col, cards: [] }
+          ),
+        };
+      });
+
+      setImportMsg(null);
+    },
+  });
+}
+function clearEntrada() {
+  if (sourceCards.length === 0) return;
+
+  setConfirmModal({
+    title: "Excluir todos da Entrada?",
+    message: `Você está prestes a excluir definitivamente os ${sourceCards.length} prestadores que estão na Entrada (Excel). Essa ação não poderá ser desfeita.`,
+    confirmText: "Excluir definitivamente",
+    action: () => {
+      setBoard((current) => ({
+        ...current,
+        cols: current.cols.map((col) =>
+          col.locked ? { ...col, cards: [] } : col
+        ),
+      }));
+
+      setImportMsg(null);
+    },
+  });
+}
 
   function addColumn() {
     setBoard((current) => ({
@@ -667,6 +715,16 @@ export default function App() {
             <h2>Entrada (Excel)</h2>
             <p>{sourceCards.length} prestadores disponíveis</p>
           </div>
+
+          <button
+  type="button"
+  className="entrada-delete-button"
+  onClick={clearEntrada}
+  disabled={sourceCards.length === 0}
+  title="Excluir todos os prestadores da Entrada"
+>
+  🗑
+</button>
         </div>
 
         <div className="entrada-drawer-content">
@@ -1314,6 +1372,58 @@ export default function App() {
           </section>
         </div>
       )}
+
+      {confirmModal && (
+  <div
+    className="modal-backdrop"
+    onMouseDown={(event) => {
+      if (event.target === event.currentTarget) {
+        setConfirmModal(null);
+      }
+    }}
+  >
+    <section
+      className="dialog confirm-dialog"
+      role="alertdialog"
+      aria-modal="true"
+      aria-labelledby="confirm-title"
+    >
+      <div className="confirm-icon">!</div>
+
+      <div className="dialog-heading">
+        <div>
+          <div className="eyebrow">CONFIRMAÇÃO DE AÇÃO</div>
+          <h2 id="confirm-title">{confirmModal.title}</h2>
+        </div>
+      </div>
+
+      <p className="confirm-message">
+        {confirmModal.message}
+      </p>
+
+      <div className="dialog-actions">
+        <button
+          type="button"
+          className="btn"
+          onClick={() => setConfirmModal(null)}
+        >
+          Cancelar
+        </button>
+
+        <button
+          type="button"
+          className="btn danger"
+          onClick={() => {
+            confirmModal.action();
+            setConfirmModal(null);
+          }}
+        >
+          {confirmModal.confirmText}
+        </button>
+      </div>
+    </section>
+  </div>
+)}
     </main>
   );
 }
