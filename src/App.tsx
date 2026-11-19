@@ -7,6 +7,39 @@ type Column = { id: string; title: string; cards: Card[]; locked?: boolean };
 type BoardState = { cols: Column[] };
 type Editing = { colId: string; cardId: string | null };
 
+type ProviderGroup = {
+  id: string;
+  name: string;
+  providers: string[];
+};
+
+type BlockedProvider = {
+  id: string;
+  provider: string;
+  columnId: string;
+};
+
+type AutoFillRules = {
+  groups: ProviderGroup[];
+  blocked: BlockedProvider[];
+};
+
+const RULES_KEY = "calendario-autofill-rules";
+
+const emptyRules: AutoFillRules = {
+  groups: [],
+  blocked: [],
+};
+
+function loadRules(): AutoFillRules {
+  try {
+    const saved = localStorage.getItem(RULES_KEY);
+    return saved ? JSON.parse(saved) : emptyRules;
+  } catch {
+    return emptyRules;
+  }
+}
+
 const STORAGE_KEY = "conferencia-v1";
 
 const uid = () => Math.random().toString(36).slice(2, 10);
@@ -84,17 +117,232 @@ export default function App() {
 
   const visibleCols = board.cols.filter((col) => !col.locked);
 
+  const [rules, setRules] = useState<AutoFillRules>(loadRules);
+  const [showRules, setShowRules] = useState(false);
+
+  const [groupName, setGroupName] = useState("");
+  const [selectedProviders, setSelectedProviders] = useState<string[]>([]);
+
+  const [blockedProvider, setBlockedProvider] = useState("");
+  const [blockedColumn, setBlockedColumn] = useState("");
+  const [providerSearch, setProviderSearch] = useState("");
+  const [providerListOpen, setProviderListOpen] = useState(false);
+
+  useEffect(() => {
+    localStorage.setItem(RULES_KEY, JSON.stringify(rules));
+  }, [rules]);
+
+  function addGroup() {
+    if (!groupName.trim() || selectedProviders.length < 2) {
+      alert("Informe um nome e selecione pelo menos dois prestadores.");
+      return;
+    }
+
+    // Verifica se algum prestador já pertence a outro grupo.
+    const alreadyGrouped = rules.groups.flatMap(
+      (group) => group.providers
+    );
+
+    const hasDuplicate = selectedProviders.some((provider) =>
+      alreadyGrouped.some(
+        (name) =>
+          name.trim().toLowerCase() ===
+          provider.trim().toLowerCase()
+      )
+    );
+
+    if (hasDuplicate) {
+      alert("Um ou mais prestadores já pertencem a outro grupo.");
+      return;
+    }
+
+    // Cria o grupo.
+    setRules((current) => ({
+      ...current,
+      groups: [
+        ...current.groups,
+        {
+          id: uid(),
+          name: groupName.trim(),
+          providers: selectedProviders,
+        },
+      ],
+    }));
+
+    setGroupName("");
+    setSelectedProviders([]);
+  }
+
+  function addBlockedProvider() {
+    if (!blockedProvider || !blockedColumn) return;
+
+    const exists = rules.blocked.some(
+      (rule) =>
+        rule.provider === blockedProvider &&
+        rule.columnId === blockedColumn
+    );
+
+    if (exists) return;
+
+    setRules((current) => ({
+      ...current,
+      blocked: [
+        ...current.blocked,
+        {
+          id: uid(),
+          provider: blockedProvider,
+          columnId: blockedColumn,
+        },
+      ],
+    }));
+
+    setBlockedProvider("");
+    setBlockedColumn("");
+  }
+
+  function removeGroup(id: string) {
+    setRules((current) => ({
+      ...current,
+      groups: current.groups.filter((group) => group.id !== id),
+    }));
+  }
+
+  function removeBlocked(id: string) {
+    setRules((current) => ({
+      ...current,
+      blocked: current.blocked.filter((rule) => rule.id !== id),
+    }));
+  }
+
+  function autoFill() {
+    const source = board.cols.find((col) => col.locked);
+    const days = visibleCols;
+
+    if (!source) {
+      alert("Coluna de entrada não encontrada.");
+      return;
+    }
+
+    // Reúne os prestadores da entrada e de todas as datas.
+    const cards = board.cols.flatMap((col) => col.cards);
+
+    if (cards.length === 0) {
+      alert("Importe os prestadores antes de preencher.");
+      return;
+    }
+
+    if (days.length === 0) {
+      alert("Crie pelo menos uma data.");
+      return;
+    }
+
+    // Monta os grupos inseparáveis.
+    const groupedIds = new Set<string>();
+
+    const units: Card[][] = [];
+
+    rules.groups
+      .forEach((group) => {
+        const members = cards.filter((card) =>
+          group.providers.some(
+            (name) =>
+              name.trim().toLowerCase() ===
+              card.prestador.trim().toLowerCase()
+          )
+        );
+
+        if (members.length > 0) {
+          members.forEach((card) => groupedIds.add(card.id));
+          units.push(members);
+        }
+      });
+
+    // Prestadores que não pertencem a grupos inseparáveis.
+    cards.forEach((card) => {
+      if (!groupedIds.has(card.id)) {
+        units.push([card]);
+      }
+    });
+
+    // Calcula as restrições de cada unidade.
+    const allocations = units.map((members) => ({
+      members,
+      total: members.reduce((sum, card) => sum + card.qtd, 0),
+      eligibleDays: days.filter(
+        (day) =>
+          !members.some((card) =>
+            rules.blocked.some(
+              (rule) =>
+                rule.provider.trim().toLowerCase() ===
+                card.prestador.trim().toLowerCase() &&
+                rule.columnId === day.id
+            )
+          )
+      ),
+    }));
+
+    // Unidades com menos opções são processadas primeiro.
+    allocations.sort(
+      (a, b) =>
+        a.eligibleDays.length - b.eligibleDays.length ||
+        b.total - a.total
+    );
+
+    const totals = new Map<string, number>(
+      days.map((day) => [day.id, 0])
+    );
+
+    const result = new Map<string, Card[]>(
+      days.map((day) => [day.id, []])
+    );
+
+    for (const unit of allocations) {
+      if (unit.eligibleDays.length === 0) {
+        alert(
+          `Não foi possível preencher: ${unit.members
+            .map((card) => card.prestador)
+            .join(", ")} não possui uma data permitida.`
+        );
+        return;
+      }
+
+      // Escolhe o dia com menor quantidade de procedimentos.
+      const target = [...unit.eligibleDays].sort(
+        (a, b) =>
+          (totals.get(a.id) ?? 0) - (totals.get(b.id) ?? 0)
+      )[0];
+
+      result.get(target.id)!.push(...unit.members);
+
+      totals.set(
+        target.id,
+        (totals.get(target.id) ?? 0) + unit.total
+      );
+    }
+
+    // Atualiza o quadro somente após encontrar uma distribuição válida.
+    setBoard((current) => ({
+      ...current,
+      cols: current.cols.map((col) => ({
+        ...col,
+        cards: col.locked
+          ? []
+          : result.get(col.id) ?? [],
+      })),
+    }));
+  }
+
   function updateHora(colId: string, cardId: string, hora: string) {
     setBoard((current) => ({
       ...current,
       cols: current.cols.map((col) =>
         col.id === colId
           ? {
-              ...col,
-              cards: col.cards.map((card) =>
-                card.id === cardId ? { ...card, hora } : card,
-              ),
-            }
+            ...col,
+            cards: col.cards.map((card) =>
+              card.id === cardId ? { ...card, hora } : card,
+            ),
+          }
           : col,
       ),
     }));
@@ -298,11 +546,42 @@ export default function App() {
 
   function deleteColumn(col: Column) {
     if (col.locked) return;
-    if (col.cards.length && !window.confirm("Excluir a coluna e seus cartões?")) return;
-    setBoard((current) => ({
-      ...current,
-      cols: current.cols.filter((item) => item.id !== col.id),
-    }));
+
+    if (
+      !window.confirm(
+        col.cards.length
+          ? `Excluir a data "${col.title}"? Os ${col.cards.length} prestadores voltarão para Entrada (Excel).`
+          : `Excluir a data "${col.title}"?`
+      )
+    ) {
+      return;
+    }
+
+    setBoard((current) => {
+      const source = current.cols.find((item) => item.locked);
+
+      if (!source) return current;
+
+      const deletedColumn = current.cols.find(
+        (item) => item.id === col.id
+      );
+
+      if (!deletedColumn) return current;
+
+      return {
+        ...current,
+        cols: current.cols
+          .filter((item) => item.id !== col.id)
+          .map((item) =>
+            item.locked
+              ? {
+                ...item,
+                cards: [...item.cards, ...deletedColumn.cards],
+              }
+              : item
+          ),
+      };
+    });
   }
 
   function deleteCard(colId: string, cardId: string) {
@@ -346,6 +625,8 @@ export default function App() {
     setOverColumn(null);
   }
 
+  const sourceCards = board.cols.find((col) => col.locked)?.cards ?? [];
+
   return (
     <main className="app-shell">
       <header className="topbar">
@@ -377,6 +658,14 @@ export default function App() {
 
         <button className="btn" onClick={() => setShowTable(true)}>
           <span aria-hidden="true">▤</span> Visualizar tabela
+        </button>
+
+        <button className="btn primary" onClick={autoFill}>
+          <span aria-hidden="true">⚡</span> Autopreencher
+        </button>
+
+        <button className="btn" onClick={() => setShowRules(true)}>
+          <span aria-hidden="true">⚙</span> Regras
         </button>
       </header>
 
@@ -457,27 +746,6 @@ export default function App() {
                     <strong>{card.qtd}</strong>{" "}
                     {card.qtd === 1 ? "procedimento" : "procedimentos"}
                   </p>
-                  <div className="card-footer">
-                    <span />
-                    <div className="card-actions">
-                      <button
-                        className="icon-button"
-                        title="Editar"
-                        aria-label="Editar cartão"
-                        onClick={() => openDialog(col.id, card.id)}
-                      >
-                        ✎
-                      </button>
-                      <button
-                        className="icon-button"
-                        title="Excluir"
-                        aria-label="Excluir cartão"
-                        onClick={() => deleteCard(col.id, card.id)}
-                      >
-                        ×
-                      </button>
-                    </div>
-                  </div>
                 </article>
               ))}
             </div>
@@ -529,6 +797,280 @@ export default function App() {
                 <button type="submit" className="btn primary">Salvar cartão</button>
               </div>
             </form>
+          </section>
+        </div>
+      )}
+
+      {showRules && (
+        <div
+          className="modal-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setShowRules(false);
+            }
+          }}
+        >
+          <section
+            className="dialog"
+            role="dialog"
+            aria-modal="true"
+            style={{ width: 900, maxHeight: "85vh", overflowY: "auto" }}
+          >
+            <div className="dialog-heading">
+              <div>
+                <div className="eyebrow">AUTOPREENCHIMENTO</div>
+                <h2>Regras de distribuição</h2>
+              </div>
+
+              <button
+                className="icon-button"
+                onClick={() => setShowRules(false)}
+              >
+                ×
+              </button>
+            </div>
+
+            <h3>1. Grupos de prestadores</h3>
+
+            <label>
+              Nome do grupo
+              <input
+                value={groupName}
+                onChange={(e) => setGroupName(e.target.value)}
+                placeholder="Ex.: Grupo de exames"
+              />
+            </label>
+
+            <div className="rule-provider-container">
+              <button
+                type="button"
+                className="rule-provider-toggle"
+                onClick={() => setProviderListOpen((current) => !current)}
+              >
+                <div>
+                  <strong>Selecionar prestadores</strong>
+                  <span>
+                    {selectedProviders.length} de {sourceCards.length} selecionados
+                  </span>
+                </div>
+
+                <span className={`rule-provider-arrow ${providerListOpen ? "open" : ""}`}>
+                  ▾
+                </span>
+              </button>
+
+              {providerListOpen && (
+                <div className="rule-provider-content">
+                  <div className="rule-provider-search">
+                    <span>⌕</span>
+                    <input
+                      type="text"
+                      placeholder="Pesquisar prestador..."
+                      value={providerSearch}
+                      onChange={(e) => setProviderSearch(e.target.value)}
+                    />
+
+                    {providerSearch && (
+                      <button
+                        type="button"
+                        onClick={() => setProviderSearch("")}
+                        title="Limpar pesquisa"
+                      >
+                        ×
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="rule-provider-list">
+                    {[...sourceCards]
+                      .filter((card) =>
+                        card.prestador
+                          .toLowerCase()
+                          .includes(providerSearch.trim().toLowerCase())
+                      )
+                      .sort((a, b) =>
+                        a.prestador.localeCompare(b.prestador, "pt-BR")
+                      )
+                      .map((card) => (
+                        <label
+                          key={card.id}
+                          className={`rule-provider-item ${selectedProviders.includes(card.prestador)
+                            ? "selected"
+                            : ""
+                            }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedProviders.includes(card.prestador)}
+                            onChange={(e) =>
+                              setSelectedProviders((current) =>
+                                e.target.checked
+                                  ? [...current, card.prestador]
+                                  : current.filter(
+                                    (name) => name !== card.prestador
+                                  )
+                              )
+                            }
+                          />
+
+                          <span>{card.prestador}</span>
+                        </label>
+                      ))}
+
+                    {sourceCards.filter((card) =>
+                      card.prestador
+                        .toLowerCase()
+                        .includes(providerSearch.trim().toLowerCase())
+                    ).length === 0 && (
+                        <p className="rule-provider-empty">
+                          Nenhum prestador encontrado.
+                        </p>
+                      )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <button className="btn primary" onClick={addGroup}>
+              + Adicionar grupo
+            </button>
+
+            <div className="rules-list">
+  {rules.groups.length > 0 && (
+    <div className="rules-section-label">
+      <span>Grupos cadastrados</span>
+      <span>{rules.groups.length}</span>
+    </div>
+  )}
+
+  {rules.groups.map((group) => (
+    <div key={group.id} className="rule-card">
+      <div className="rule-card-icon group-icon">♧</div>
+
+      <div className="rule-card-content">
+        <strong>{group.name}</strong>
+        <span className="rule-card-description">
+          {group.providers.length} prestadores · Sempre juntos
+        </span>
+        <div className="rule-tags">
+          {group.providers.map((provider) => (
+            <span key={provider} className="rule-tag">
+              {provider}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      <button
+        className="rule-delete"
+        title="Excluir grupo"
+        onClick={() => removeGroup(group.id)}
+      >
+        ×
+      </button>
+    </div>
+  ))}
+
+  {rules.groups.length === 0 && (
+    <p className="rules-empty">
+      Nenhum grupo cadastrado ainda.
+    </p>
+  )}
+</div>
+
+            <hr />
+
+            <h3>2. Restrições por data</h3>
+
+            <label>
+              Prestador
+              <select
+                value={blockedProvider}
+                onChange={(e) => setBlockedProvider(e.target.value)}
+              >
+                <option value="">Selecione um prestador</option>
+                {sourceCards.map((card) => (
+                  <option key={card.id} value={card.prestador}>
+                    {card.prestador}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label>
+              Data em que não poderá ser alocado
+              <select
+                value={blockedColumn}
+                onChange={(e) => setBlockedColumn(e.target.value)}
+              >
+                <option value="">Selecione uma data</option>
+                {visibleCols.map((col) => (
+                  <option key={col.id} value={col.id}>
+                    {col.title}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <button className="btn primary" onClick={addBlockedProvider}>
+              + Adicionar restrição
+            </button>
+
+            <div className="rules-list">
+  {rules.blocked.length > 0 && (
+    <div className="rules-section-label">
+      <span>Restrições cadastradas</span>
+      <span>{rules.blocked.length}</span>
+    </div>
+  )}
+
+  {rules.blocked.map((rule) => {
+    const day = visibleCols.find(
+      (col) => col.id === rule.columnId
+    );
+
+    return (
+      <div key={rule.id} className="rule-card">
+        <div className="rule-card-icon blocked-icon">⊘</div>
+
+        <div className="rule-card-content">
+          <strong>{rule.provider}</strong>
+          <span className="rule-card-description">
+            Não poderá ser alocado nesta data
+          </span>
+          <div className="rule-tags">
+            <span className="rule-tag date-tag">
+              {day?.title ?? "Data removida"}
+            </span>
+          </div>
+        </div>
+
+        <button
+          className="rule-delete"
+          title="Excluir restrição"
+          onClick={() => removeBlocked(rule.id)}
+        >
+          ×
+        </button>
+      </div>
+    );
+  })}
+
+  {rules.blocked.length === 0 && (
+    <p className="rules-empty">
+      Nenhuma restrição cadastrada ainda.
+    </p>
+  )}
+</div>
+
+            <div className="dialog-actions">
+              <button
+                className="btn primary"
+                onClick={() => setShowRules(false)}
+              >
+                Salvar regras
+              </button>
+            </div>
           </section>
         </div>
       )}
@@ -611,9 +1153,8 @@ export default function App() {
                         return (
                           <React.Fragment key={col.id}>
                             <td
-                              className={`${card ? "drag-cell" : ""} ${over} ${
-                                card && dragging?.cardId === card.id ? "dragging-cell" : ""
-                              }`}
+                              className={`${card ? "drag-cell" : ""} ${over} ${card && dragging?.cardId === card.id ? "dragging-cell" : ""
+                                }`}
                               draggable={!!card}
                               onDragStart={(event) => {
                                 if (!card) return;
