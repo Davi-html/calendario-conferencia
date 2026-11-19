@@ -8,8 +8,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "electron": "electron .",
-    "dist": "npm run build && electron-builder --win nsis",
-    "dist:portable": "npm run build && electron-builder --win portable"
+    "dist": "npm run build && electron-builder --win portable",
+    "dist:setup": "npm run build && electron-builder --win nsis"
   },
   "build": {
     "appId": "com.calendario.desktop",
@@ -26,7 +26,7 @@
     "win": {
       "target": [
         {
-          "target": "nsis",
+          "target": "portable",
           "arch": ["x64"]
         }
       ]
