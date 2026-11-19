@@ -584,17 +584,6 @@ export default function App() {
     });
   }
 
-  function deleteCard(colId: string, cardId: string) {
-    setBoard((current) => ({
-      ...current,
-      cols: current.cols.map((col) =>
-        col.id === colId
-          ? { ...col, cards: col.cards.filter((card) => card.id !== cardId) }
-          : col,
-      ),
-    }));
-  }
-
   function dropCard(targetColId: string, targetCardId?: string) {
     if (!dragging) return;
     setBoard((current) => {
@@ -626,6 +615,46 @@ export default function App() {
   }
 
   const sourceCards = board.cols.find((col) => col.locked)?.cards ?? [];
+
+  const boardRef = useRef<HTMLDivElement>(null);
+
+  const isDraggingBoard = useRef(false);
+  const startX = useRef(0);
+  const scrollLeft = useRef(0);
+
+  function handleBoardMouseDown(e: React.MouseEvent<HTMLDivElement>) {
+    if (
+      (e.target as HTMLElement).closest(
+        "button, input, textarea, select, .task-card"
+      )
+    ) {
+      return;
+    }
+
+    const board = boardRef.current;
+    if (!board) return;
+
+    isDraggingBoard.current = true;
+    startX.current = e.pageX - board.offsetLeft;
+    scrollLeft.current = board.scrollLeft;
+  }
+
+  function handleBoardMouseMove(e: React.MouseEvent<HTMLDivElement>) {
+    const board = boardRef.current;
+
+    if (!isDraggingBoard.current || !board) return;
+
+    e.preventDefault();
+
+    const x = e.pageX - board.offsetLeft;
+    const distance = (x - startX.current) * 1.2;
+
+    board.scrollLeft = scrollLeft.current - distance;
+  }
+
+  function stopDraggingBoard() {
+    isDraggingBoard.current = false;
+  }
 
   return (
     <main className="app-shell">
@@ -669,7 +698,14 @@ export default function App() {
         </button>
       </header>
 
-      <section className="board" aria-label="Quadro de prestadores">
+      <section
+        className="board"
+        ref={boardRef}
+        onMouseDown={handleBoardMouseDown}
+        onMouseMove={handleBoardMouseMove}
+        onMouseUp={stopDraggingBoard}
+        onMouseLeave={stopDraggingBoard}
+      >
         {board.cols.map((col) => (
           <section
             className={`column ${overColumn === col.id ? "over" : ""}`}
@@ -936,47 +972,47 @@ export default function App() {
             </button>
 
             <div className="rules-list">
-  {rules.groups.length > 0 && (
-    <div className="rules-section-label">
-      <span>Grupos cadastrados</span>
-      <span>{rules.groups.length}</span>
-    </div>
-  )}
+              {rules.groups.length > 0 && (
+                <div className="rules-section-label">
+                  <span>Grupos cadastrados</span>
+                  <span>{rules.groups.length}</span>
+                </div>
+              )}
 
-  {rules.groups.map((group) => (
-    <div key={group.id} className="rule-card">
-      <div className="rule-card-icon group-icon">♧</div>
+              {rules.groups.map((group) => (
+                <div key={group.id} className="rule-card">
+                  <div className="rule-card-icon group-icon">♧</div>
 
-      <div className="rule-card-content">
-        <strong>{group.name}</strong>
-        <span className="rule-card-description">
-          {group.providers.length} prestadores · Sempre juntos
-        </span>
-        <div className="rule-tags">
-          {group.providers.map((provider) => (
-            <span key={provider} className="rule-tag">
-              {provider}
-            </span>
-          ))}
-        </div>
-      </div>
+                  <div className="rule-card-content">
+                    <strong>{group.name}</strong>
+                    <span className="rule-card-description">
+                      {group.providers.length} prestadores · Sempre juntos
+                    </span>
+                    <div className="rule-tags">
+                      {group.providers.map((provider) => (
+                        <span key={provider} className="rule-tag">
+                          {provider}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
 
-      <button
-        className="rule-delete"
-        title="Excluir grupo"
-        onClick={() => removeGroup(group.id)}
-      >
-        ×
-      </button>
-    </div>
-  ))}
+                  <button
+                    className="rule-delete"
+                    title="Excluir grupo"
+                    onClick={() => removeGroup(group.id)}
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
 
-  {rules.groups.length === 0 && (
-    <p className="rules-empty">
-      Nenhum grupo cadastrado ainda.
-    </p>
-  )}
-</div>
+              {rules.groups.length === 0 && (
+                <p className="rules-empty">
+                  Nenhum grupo cadastrado ainda.
+                </p>
+              )}
+            </div>
 
             <hr />
 
@@ -1017,51 +1053,51 @@ export default function App() {
             </button>
 
             <div className="rules-list">
-  {rules.blocked.length > 0 && (
-    <div className="rules-section-label">
-      <span>Restrições cadastradas</span>
-      <span>{rules.blocked.length}</span>
-    </div>
-  )}
+              {rules.blocked.length > 0 && (
+                <div className="rules-section-label">
+                  <span>Restrições cadastradas</span>
+                  <span>{rules.blocked.length}</span>
+                </div>
+              )}
 
-  {rules.blocked.map((rule) => {
-    const day = visibleCols.find(
-      (col) => col.id === rule.columnId
-    );
+              {rules.blocked.map((rule) => {
+                const day = visibleCols.find(
+                  (col) => col.id === rule.columnId
+                );
 
-    return (
-      <div key={rule.id} className="rule-card">
-        <div className="rule-card-icon blocked-icon">⊘</div>
+                return (
+                  <div key={rule.id} className="rule-card">
+                    <div className="rule-card-icon blocked-icon">⊘</div>
 
-        <div className="rule-card-content">
-          <strong>{rule.provider}</strong>
-          <span className="rule-card-description">
-            Não poderá ser alocado nesta data
-          </span>
-          <div className="rule-tags">
-            <span className="rule-tag date-tag">
-              {day?.title ?? "Data removida"}
-            </span>
-          </div>
-        </div>
+                    <div className="rule-card-content">
+                      <strong>{rule.provider}</strong>
+                      <span className="rule-card-description">
+                        Não poderá ser alocado nesta data
+                      </span>
+                      <div className="rule-tags">
+                        <span className="rule-tag date-tag">
+                          {day?.title ?? "Data removida"}
+                        </span>
+                      </div>
+                    </div>
 
-        <button
-          className="rule-delete"
-          title="Excluir restrição"
-          onClick={() => removeBlocked(rule.id)}
-        >
-          ×
-        </button>
-      </div>
-    );
-  })}
+                    <button
+                      className="rule-delete"
+                      title="Excluir restrição"
+                      onClick={() => removeBlocked(rule.id)}
+                    >
+                      ×
+                    </button>
+                  </div>
+                );
+              })}
 
-  {rules.blocked.length === 0 && (
-    <p className="rules-empty">
-      Nenhuma restrição cadastrada ainda.
-    </p>
-  )}
-</div>
+              {rules.blocked.length === 0 && (
+                <p className="rules-empty">
+                  Nenhuma restrição cadastrada ainda.
+                </p>
+              )}
+            </div>
 
             <div className="dialog-actions">
               <button

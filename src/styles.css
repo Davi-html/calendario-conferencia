@@ -960,3 +960,30 @@ h1 {
     grid-template-columns: 1fr;
   }
 }
+
+/* Arrastar o quadro horizontalmente */
+.board {
+  overflow-x: auto;
+  overflow-y: hidden;
+  cursor: grab;
+  user-select: none;
+  scroll-behavior: auto;
+  scrollbar-width: thin;
+}
+
+.board:active {
+  cursor: grabbing;
+}
+
+/* Não interferir no arraste dos cartões */
+.board .task-card {
+  user-select: text;
+}
+
+/* Não ativar o arraste ao clicar em botões ou campos */
+.board button,
+.board input,
+.board textarea,
+.board select {
+  cursor: auto;
+}
