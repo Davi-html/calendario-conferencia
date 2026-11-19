@@ -127,6 +127,7 @@ export default function App() {
   const [blockedColumn, setBlockedColumn] = useState("");
   const [providerSearch, setProviderSearch] = useState("");
   const [providerListOpen, setProviderListOpen] = useState(false);
+  const [entradaAberta, setEntradaAberta] = useState(false);
 
   useEffect(() => {
     localStorage.setItem(RULES_KEY, JSON.stringify(rules));
@@ -658,6 +659,59 @@ export default function App() {
 
   return (
     <main className="app-shell">
+      {/* MENU LATERAL - ENTRADA EXCEL */}
+      <div className={`entrada-drawer ${entradaAberta ? "aberta" : ""}`}>
+        <div className="entrada-drawer-header">
+          <div>
+            <span className="eyebrow">IMPORTAÇÃO</span>
+            <h2>Entrada (Excel)</h2>
+            <p>{sourceCards.length} prestadores disponíveis</p>
+          </div>
+        </div>
+
+        <div className="entrada-drawer-content">
+          {sourceCards.length === 0 ? (
+            <div className="empty">
+              Nenhum prestador importado.
+            </div>
+          ) : (
+            sourceCards.map((card) => (
+              <article
+                className={`task-card ${dragging?.cardId === card.id ? "dragging" : ""
+                  }`}
+                key={card.id}
+                data-card-id={card.id}
+                draggable
+                onDragStart={(event) => {
+                  setDragging({ cardId: card.id, fromCol: "entrada" });
+                  event.dataTransfer.effectAllowed = "move";
+                  event.dataTransfer.setData("text/plain", card.id);
+                }}
+                onDragEnd={() => {
+                  setDragging(null);
+                  setOverColumn(null);
+                }}
+              >
+                <h3>{card.prestador}</h3>
+                <p>
+                  <strong>{card.qtd}</strong>{" "}
+                  {card.qtd === 1 ? "procedimento" : "procedimentos"}
+                </p>
+              </article>
+            ))
+          )}
+        </div>
+
+        <button
+          type="button"
+          className="entrada-drawer-toggle"
+          onClick={() => setEntradaAberta((current) => !current)}
+          title={entradaAberta ? "Recolher entrada" : "Abrir entrada"}
+          aria-label={entradaAberta ? "Recolher entrada" : "Abrir entrada"}
+        >
+          {entradaAberta ? "‹" : "›"}
+        </button>
+      </div>
       <header className="topbar">
         <div className="heading">
           <div className="eyebrow">CONFERENCIA</div>
@@ -706,93 +760,95 @@ export default function App() {
         onMouseUp={stopDraggingBoard}
         onMouseLeave={stopDraggingBoard}
       >
-        {board.cols.map((col) => (
-          <section
-            className={`column ${overColumn === col.id ? "over" : ""}`}
-            key={col.id}
-            onDragOver={(event) => {
-              event.preventDefault();
-              setOverColumn(col.id);
-            }}
-            onDragLeave={(event) => {
-              if (!event.currentTarget.contains(event.relatedTarget as Node)) {
-                setOverColumn(null);
-              }
-            }}
-            onDrop={(event) => {
-              event.preventDefault();
-              const cardElement = (event.target as HTMLElement).closest<HTMLElement>("[data-card-id]");
-              dropCard(col.id, cardElement?.dataset.cardId);
-            }}
-          >
-            <div className="column-header">
-              <div className="column-heading-info">
-                <input
-                  className="column-title"
-                  aria-label="Nome da coluna"
-                  value={col.title}
-                  readOnly={col.locked}
-                  onChange={(event) => renameColumn(col.id, event.target.value)}
-                  onBlur={(event) => renameColumn(col.id, event.target.value)}
-                />
+        {board.cols
+          .filter((col) => !col.locked)
+          .map((col) => (
+            <section
+              className={`column ${overColumn === col.id ? "over" : ""}`}
+              key={col.id}
+              onDragOver={(event) => {
+                event.preventDefault();
+                setOverColumn(col.id);
+              }}
+              onDragLeave={(event) => {
+                if (!event.currentTarget.contains(event.relatedTarget as Node)) {
+                  setOverColumn(null);
+                }
+              }}
+              onDrop={(event) => {
+                event.preventDefault();
+                const cardElement = (event.target as HTMLElement).closest<HTMLElement>("[data-card-id]");
+                dropCard(col.id, cardElement?.dataset.cardId);
+              }}
+            >
+              <div className="column-header">
+                <div className="column-heading-info">
+                  <input
+                    className="column-title"
+                    aria-label="Nome da coluna"
+                    value={col.title}
+                    readOnly={col.locked}
+                    onChange={(event) => renameColumn(col.id, event.target.value)}
+                    onBlur={(event) => renameColumn(col.id, event.target.value)}
+                  />
 
-                <span className="column-total">
-                  {getColumnTotal(col).toLocaleString("pt-BR")} procedimentos
-                </span>
+                  <span className="column-total">
+                    {getColumnTotal(col).toLocaleString("pt-BR")} procedimentos
+                  </span>
+                </div>
+
+                <span className="count">{col.cards.length}</span>
+
+                {!col.locked && (
+                  <button
+                    className="icon-button"
+                    title="Excluir coluna"
+                    aria-label="Excluir coluna"
+                    onClick={() => deleteColumn(col)}
+                  >
+                    ×
+                  </button>
+                )}
               </div>
 
-              <span className="count">{col.cards.length}</span>
+              <div className="cards">
+                {col.cards.length === 0 && (
+                  <div className="empty">
+                    {col.locked ? "Importe um Excel para começar" : "Nenhum cartão"}
+                  </div>
+                )}
+                {col.cards.map((card) => (
+                  <article
+                    className={`task-card ${dragging?.cardId === card.id ? "dragging" : ""}`}
+                    key={card.id}
+                    data-card-id={card.id}
+                    draggable
+                    onDragStart={(event) => {
+                      setDragging({ cardId: card.id, fromCol: col.id });
+                      event.dataTransfer.effectAllowed = "move";
+                      event.dataTransfer.setData("text/plain", card.id);
+                    }}
+                    onDragEnd={() => {
+                      setDragging(null);
+                      setOverColumn(null);
+                    }}
+                  >
+                    <h3>{card.prestador}</h3>
+                    <p>
+                      <strong>{card.qtd}</strong>{" "}
+                      {card.qtd === 1 ? "procedimento" : "procedimentos"}
+                    </p>
+                  </article>
+                ))}
+              </div>
 
               {!col.locked && (
-                <button
-                  className="icon-button"
-                  title="Excluir coluna"
-                  aria-label="Excluir coluna"
-                  onClick={() => deleteColumn(col)}
-                >
-                  ×
+                <button className="btn add-card" onClick={() => openDialog(col.id)}>
+                  <span aria-hidden="true">＋</span> Adicionar prestador
                 </button>
               )}
-            </div>
-
-            <div className="cards">
-              {col.cards.length === 0 && (
-                <div className="empty">
-                  {col.locked ? "Importe um Excel para começar" : "Nenhum cartão"}
-                </div>
-              )}
-              {col.cards.map((card) => (
-                <article
-                  className={`task-card ${dragging?.cardId === card.id ? "dragging" : ""}`}
-                  key={card.id}
-                  data-card-id={card.id}
-                  draggable
-                  onDragStart={(event) => {
-                    setDragging({ cardId: card.id, fromCol: col.id });
-                    event.dataTransfer.effectAllowed = "move";
-                    event.dataTransfer.setData("text/plain", card.id);
-                  }}
-                  onDragEnd={() => {
-                    setDragging(null);
-                    setOverColumn(null);
-                  }}
-                >
-                  <h3>{card.prestador}</h3>
-                  <p>
-                    <strong>{card.qtd}</strong>{" "}
-                    {card.qtd === 1 ? "procedimento" : "procedimentos"}
-                  </p>
-                </article>
-              ))}
-            </div>
-
-            {!col.locked && (
-              <button className="btn add-card" onClick={() => openDialog(col.id)}>
-                <span aria-hidden="true">＋</span> Adicionar prestador
-              </button>
-            )}
-          </section>
-        ))}
+            </section>
+          ))}
       </section>
 
       {editing && (
