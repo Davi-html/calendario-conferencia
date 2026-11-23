@@ -26,9 +26,18 @@ type BlockedProvider = {
   weekday?: number;
 };
 
+type ProcedureIntervalRule = {
+  id: string;
+  minProcedures: number;
+  minutes: number;
+};
+
 type AutoFillRules = {
   groups: ProviderGroup[];
   blocked: BlockedProvider[];
+  scheduleStartTime?: string;
+  defaultIntervalMinutes?: number;
+  procedureIntervals?: ProcedureIntervalRule[];
 };
 
 const RULES_KEY = "calendario-autofill-rules";
@@ -143,7 +152,26 @@ function isAutoFillRules(value: unknown): value is AutoFillRules {
             Number.isInteger(rule.weekday) &&
             rule.weekday >= 0 &&
             rule.weekday <= 6)),
-    )
+    ) &&
+    (candidate.scheduleStartTime === undefined ||
+      (typeof candidate.scheduleStartTime === "string" &&
+        /^([01]\d|2[0-3]):[0-5]\d$/.test(candidate.scheduleStartTime))) &&
+    (candidate.defaultIntervalMinutes === undefined ||
+      (Number.isInteger(candidate.defaultIntervalMinutes) &&
+        candidate.defaultIntervalMinutes >= 1 &&
+        candidate.defaultIntervalMinutes <= 1440)) &&
+    (candidate.procedureIntervals === undefined ||
+      (Array.isArray(candidate.procedureIntervals) &&
+        candidate.procedureIntervals.every(
+          (rule) =>
+            Boolean(rule) &&
+            typeof rule.id === "string" &&
+            Number.isInteger(rule.minProcedures) &&
+            rule.minProcedures >= 0 &&
+            Number.isInteger(rule.minutes) &&
+            rule.minutes >= 1 &&
+            rule.minutes <= 1440,
+        )))
   );
 }
 
@@ -293,7 +321,11 @@ export default function App() {
   ).sort((a, b) => a.localeCompare(b, "pt-BR"));
 
   const [rules, setRules] = useState<AutoFillRules>(loadRules);
-  const [collapsedSections, setCollapsedSections] = useState({ groups: false, blocked: false });
+  const [collapsedSections, setCollapsedSections] = useState({
+    groups: false,
+    blocked: false,
+    intervals: false,
+  });
   const [showRules, setShowRules] = useState(false);
 
   const [groupName, setGroupName] = useState("");
@@ -301,6 +333,8 @@ export default function App() {
 
   const [blockedProvider, setBlockedProvider] = useState("");
   const [blockedWeekday, setBlockedWeekday] = useState("");
+  const [intervalThreshold, setIntervalThreshold] = useState("1000");
+  const [intervalMinutes, setIntervalMinutes] = useState("30");
   const [providerSearch, setProviderSearch] = useState("");
   const [providerListOpen, setProviderListOpen] = useState(false);
   const [entradaAberta, setEntradaAberta] = useState(false);
@@ -469,7 +503,7 @@ export default function App() {
     }));
   }
 
-  function toggleRuleSection(section: "groups" | "blocked") {
+  function toggleRuleSection(section: "groups" | "blocked" | "intervals") {
     setCollapsedSections((current) => ({ ...current, [section]: !current[section] }));
   }
 
@@ -477,6 +511,44 @@ export default function App() {
     setRules((current) => ({
       ...current,
       blocked: current.blocked.filter((rule) => rule.id !== id),
+    }));
+  }
+
+  function addProcedureInterval() {
+    const minProcedures = Number(intervalThreshold);
+    const minutes = Number(intervalMinutes);
+    if (
+      intervalThreshold.trim() === "" ||
+      !Number.isInteger(minProcedures) ||
+      minProcedures < 0 ||
+      !Number.isInteger(minutes) ||
+      minutes < 1 ||
+      minutes > 1440
+    ) {
+      alert("Informe um limite de procedimentos válido e um intervalo entre 1 e 1440 minutos.");
+      return;
+    }
+
+    if (rules.procedureIntervals?.some((rule) => rule.minProcedures === minProcedures)) {
+      alert("Já existe uma regra para esse limite de procedimentos.");
+      return;
+    }
+
+    setRules((current) => ({
+      ...current,
+      procedureIntervals: [
+        ...(current.procedureIntervals ?? []),
+        { id: uid(), minProcedures, minutes },
+      ].sort((a, b) => a.minProcedures - b.minProcedures),
+    }));
+    setIntervalThreshold("");
+    setIntervalMinutes("30");
+  }
+
+  function removeProcedureInterval(id: string) {
+    setRules((current) => ({
+      ...current,
+      procedureIntervals: (current.procedureIntervals ?? []).filter((rule) => rule.id !== id),
     }));
   }
 
@@ -613,6 +685,76 @@ export default function App() {
           }
           : col,
       ),
+    }));
+  }
+
+  function fillSchedule() {
+    const startTime = rules.scheduleStartTime ?? "09:00";
+    const defaultInterval = rules.defaultIntervalMinutes ?? 15;
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(startTime)) {
+      alert("Defina um horário inicial válido nas regras.");
+      return;
+    }
+    if (!Number.isInteger(defaultInterval) || defaultInterval < 1 || defaultInterval > 1440) {
+      alert("Defina um intervalo padrão entre 1 e 1440 minutos nas regras.");
+      return;
+    }
+
+    const [startHour, startMinute] = startTime.split(":").map(Number);
+    const intervalRules = [...(rules.procedureIntervals ?? [])].sort(
+      (a, b) => b.minProcedures - a.minProcedures,
+    );
+    const scheduled: Array<{ colId: string; cardId: string; hora: string }> = [];
+
+    for (const column of visibleCols) {
+      let cursor = startHour * 60 + startMinute;
+      for (let index = 0; index < column.cards.length; index += 1) {
+        const card = column.cards[index];
+        if (cursor >= 24 * 60) {
+          alert(`Os horários da data "${column.title}" ultrapassam meia-noite. Ajuste o horário inicial ou os intervalos nas regras.`);
+          return;
+        }
+
+        scheduled.push({
+          colId: column.id,
+          cardId: card.id,
+          hora: `${String(Math.floor(cursor / 60)).padStart(2, "0")}:${String(cursor % 60).padStart(2, "0")}`,
+        });
+
+        if (index < column.cards.length - 1) {
+          const matchingRule = intervalRules.find((rule) => card.qtd > rule.minProcedures);
+          cursor += matchingRule?.minutes ?? defaultInterval;
+        }
+      }
+    }
+
+    if (scheduled.length === 0) {
+      alert("Não há prestadores distribuídos nas datas para preencher.");
+      return;
+    }
+
+    const hasExistingTimes = visibleCols.some((column) =>
+      column.cards.some((card) => Boolean(card.hora)),
+    );
+    if (
+      hasExistingTimes &&
+      !window.confirm("Os horários existentes serão substituídos. Deseja continuar?")
+    ) {
+      return;
+    }
+
+    const scheduleByCard = new Map(
+      scheduled.map(({ colId, cardId, hora }) => [`${colId}:${cardId}`, hora]),
+    );
+    setBoard((current) => ({
+      ...current,
+      cols: current.cols.map((column) => ({
+        ...column,
+        cards: column.cards.map((card) => {
+          const hora = scheduleByCard.get(`${column.id}:${card.id}`);
+          return hora === undefined ? card : { ...card, hora };
+        }),
+      })),
     }));
   }
 
@@ -1558,6 +1700,111 @@ function clearEntrada() {
             </div>
             </div>}
 
+            <button
+              type="button"
+              className={`rule-section-toggle ${collapsedSections.intervals ? "collapsed" : ""}`}
+              aria-expanded={!collapsedSections.intervals}
+              onClick={() => toggleRuleSection("intervals")}
+            >
+              <span className="rule-section-title">3. Horários automáticos</span>
+              <span className="rule-section-count">{rules.procedureIntervals?.length ?? 0}</span>
+              <span className={`rule-provider-arrow ${collapsedSections.intervals ? "" : "open"}`}>▾</span>
+            </button>
+
+            {!collapsedSections.intervals && <div className="rule-section-content">
+              <p className="schedule-rule-help">
+                O primeiro prestador de cada data começa no horário inicial. O intervalo definido
+                para cada prestador determina quando começa o próximo.
+              </p>
+              <div className="schedule-rule-fields">
+                <label>
+                  Horário inicial de cada data (padrão 09:00)
+                  <input
+                    type="time"
+                    value={rules.scheduleStartTime ?? "09:00"}
+                    onChange={(event) =>
+                      setRules((current) => ({ ...current, scheduleStartTime: event.target.value }))
+                    }
+                  />
+                </label>
+                <label>
+                  Intervalo padrão entre prestadores (minutos)
+                  <input
+                    type="number"
+                    min={1}
+                    max={1440}
+                    step={1}
+                    value={rules.defaultIntervalMinutes ?? 15}
+                    onChange={(event) =>
+                      setRules((current) => ({
+                        ...current,
+                        defaultIntervalMinutes: event.target.value === "" ? 0 : Number(event.target.value),
+                      }))
+                    }
+                  />
+                </label>
+              </div>
+
+              <div className="schedule-rule-form">
+                <label>
+                  Se tiver mais de
+                  <input
+                    type="number"
+                    min={0}
+                    step={1}
+                    value={intervalThreshold}
+                    onChange={(event) => setIntervalThreshold(event.target.value)}
+                  />
+                  procedimentos
+                </label>
+                <label>
+                  Intervalo até o próximo (minutos)
+                  <input
+                    type="number"
+                    min={1}
+                    max={1440}
+                    step={1}
+                    value={intervalMinutes}
+                    onChange={(event) => setIntervalMinutes(event.target.value)}
+                  />
+                </label>
+                <button type="button" className="btn primary" onClick={addProcedureInterval}>
+                  + Adicionar regra
+                </button>
+              </div>
+
+              <div className="rules-list">
+                {(rules.procedureIntervals ?? []).length > 0 ? (
+                  [...(rules.procedureIntervals ?? [])]
+                    .sort((a, b) => a.minProcedures - b.minProcedures)
+                    .map((rule) => (
+                      <div key={rule.id} className="rule-card">
+                        <div className="rule-card-icon group-icon" aria-hidden="true">◷</div>
+                        <div className="rule-card-content">
+                          <strong>Mais de {rule.minProcedures.toLocaleString("pt-BR")} procedimentos</strong>
+                          <span className="rule-card-description">
+                            Próximo prestador após {rule.minutes} minutos
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          className="rule-delete"
+                          title="Excluir regra de horário"
+                          aria-label={`Excluir regra para mais de ${rule.minProcedures} procedimentos`}
+                          onClick={() => removeProcedureInterval(rule.id)}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))
+                ) : (
+                  <p className="rules-empty">
+                    Sem regras específicas; será usado o intervalo padrão.
+                  </p>
+                )}
+              </div>
+            </div>}
+
             <div className="dialog-actions">
               <button
                 className="btn primary"
@@ -1602,6 +1849,9 @@ function clearEntrada() {
               <button className="btn" onClick={downloadTable}>
                 <span aria-hidden="true">↓</span>
                 Baixar Excel
+              </button>
+              <button type="button" className="btn primary" onClick={fillSchedule}>
+                Preencher horários
               </button>
             </div>
 

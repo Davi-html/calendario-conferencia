@@ -989,6 +989,31 @@ h1 {
   text-align: center;
 }
 
+.schedule-rule-help {
+  margin: 0 0 14px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.schedule-rule-fields,
+.schedule-rule-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  align-items: end;
+  gap: 12px;
+}
+
+.schedule-rule-form {
+  margin-top: 16px;
+}
+
+.schedule-rule-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
 /* =====================================================
    10. MODO ESCURO
 ===================================================== */

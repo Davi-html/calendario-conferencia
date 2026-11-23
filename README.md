@@ -22,6 +22,8 @@ Com o Firebase Firestore configurado, o quadro e as regras ficam em um banco com
 
 Para criar uma coluna, clique em **Nova data** e depois no título **Escolher data** para abrir o calendário. O nome da coluna é preenchido automaticamente com a data e o dia da semana. Nas regras, as restrições de prestadores são recorrentes: escolha um dia da semana para impedir o autopreenchimento nesse dia, em qualquer semana ou ano.
 
+Na tabela **Visualizar**, use **Preencher horários** para atribuir horários em sequência a cada data. O primeiro prestador de cada data começa às 09:00 por padrão. Em **Regras de distribuição → Horários automáticos**, defina o horário inicial, o intervalo padrão e regras por quantidade de procedimentos (por exemplo, mais de 1.000 procedimentos define 30 minutos até o próximo prestador). O preenchimento segue a ordem dos prestadores na tabela, aplica as regras ao prestador atual e avisa antes de substituir horários já preenchidos.
+
 Para ativar o compartilhamento:
 
 1. Crie um projeto no [Firebase Console](https://console.firebase.google.com/).
