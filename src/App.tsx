@@ -282,8 +282,18 @@ export default function App() {
   const [overCell, setOverCell] = useState<string | null>(null);
 
   const visibleCols = board.cols.filter((col) => !col.locked);
+  const providerNames = Array.from(
+    new Map(
+      board.cols
+        .flatMap((col) => col.cards)
+        .map((card) => card.prestador.trim())
+        .filter(Boolean)
+        .map((name) => [name.toLocaleLowerCase("pt-BR"), name]),
+    ).values(),
+  ).sort((a, b) => a.localeCompare(b, "pt-BR"));
 
   const [rules, setRules] = useState<AutoFillRules>(loadRules);
+  const [collapsedSections, setCollapsedSections] = useState({ groups: false, blocked: false });
   const [showRules, setShowRules] = useState(false);
 
   const [groupName, setGroupName] = useState("");
@@ -457,6 +467,10 @@ export default function App() {
       ...current,
       groups: current.groups.filter((group) => group.id !== id),
     }));
+  }
+
+  function toggleRuleSection(section: "groups" | "blocked") {
+    setCollapsedSections((current) => ({ ...current, [section]: !current[section] }));
   }
 
   function removeBlocked(id: string) {
@@ -1293,8 +1307,18 @@ function clearEntrada() {
               </button>
             </div>
 
-            <h3>1. Grupos de prestadores</h3>
+            <button
+              type="button"
+              className={`rule-section-toggle ${collapsedSections.groups ? "collapsed" : ""}`}
+              aria-expanded={!collapsedSections.groups}
+              onClick={() => toggleRuleSection("groups")}
+            >
+              <span className="rule-section-title">1. Grupos de prestadores</span>
+              <span className="rule-section-count">{rules.groups.length}</span>
+              <span className={`rule-provider-arrow ${collapsedSections.groups ? "" : "open"}`}>▾</span>
+            </button>
 
+            {!collapsedSections.groups && <div className="rule-section-content">
             <label>
               Nome do grupo
               <input
@@ -1313,7 +1337,7 @@ function clearEntrada() {
                 <div>
                   <strong>Selecionar prestadores</strong>
                   <span>
-                    {selectedProviders.length} de {sourceCards.length} selecionados
+                    {selectedProviders.length} de {providerNames.length} selecionados
                   </span>
                 </div>
 
@@ -1345,45 +1369,36 @@ function clearEntrada() {
                   </div>
 
                   <div className="rule-provider-list">
-                    {[...sourceCards]
-                      .filter((card) =>
-                        card.prestador
-                          .toLowerCase()
-                          .includes(providerSearch.trim().toLowerCase())
+                    {providerNames
+                      .filter((provider) =>
+                        provider.toLowerCase().includes(providerSearch.trim().toLowerCase())
                       )
-                      .sort((a, b) =>
-                        a.prestador.localeCompare(b.prestador, "pt-BR")
-                      )
-                      .map((card) => (
+                      .map((provider) => (
                         <label
-                          key={card.id}
-                          className={`rule-provider-item ${selectedProviders.includes(card.prestador)
+                          key={provider.toLocaleLowerCase("pt-BR")}
+                          className={`rule-provider-item ${selectedProviders.includes(provider)
                             ? "selected"
                             : ""
                             }`}
                         >
                           <input
                             type="checkbox"
-                            checked={selectedProviders.includes(card.prestador)}
+                            checked={selectedProviders.includes(provider)}
                             onChange={(e) =>
                               setSelectedProviders((current) =>
                                 e.target.checked
-                                  ? [...current, card.prestador]
-                                  : current.filter(
-                                    (name) => name !== card.prestador
-                                  )
+                                  ? [...current, provider]
+                                  : current.filter((name) => name !== provider)
                               )
                             }
                           />
 
-                          <span>{card.prestador}</span>
+                          <span>{provider}</span>
                         </label>
                       ))}
 
-                    {sourceCards.filter((card) =>
-                      card.prestador
-                        .toLowerCase()
-                        .includes(providerSearch.trim().toLowerCase())
+                    {providerNames.filter((provider) =>
+                      provider.toLowerCase().includes(providerSearch.trim().toLowerCase())
                     ).length === 0 && (
                         <p className="rule-provider-empty">
                           Nenhum prestador encontrado.
@@ -1406,33 +1421,36 @@ function clearEntrada() {
                 </div>
               )}
 
-              {rules.groups.map((group) => (
-                <div key={group.id} className="rule-card">
-                  <div className="rule-card-icon group-icon">♧</div>
+              {rules.groups.map((group) => {
+                return (
+                  <div key={group.id} className="rule-card">
+                    <div className="rule-card-icon group-icon">♧</div>
 
-                  <div className="rule-card-content">
-                    <strong>{group.name}</strong>
-                    <span className="rule-card-description">
-                      {group.providers.length} prestadores · Sempre juntos
-                    </span>
-                    <div className="rule-tags">
-                      {group.providers.map((provider) => (
-                        <span key={provider} className="rule-tag">
-                          {provider}
-                        </span>
-                      ))}
+                    <div className="rule-card-content">
+                      <strong>{group.name}</strong>
+                      <span className="rule-card-description">
+                        {group.providers.length} prestadores · Sempre juntos
+                      </span>
+                      <div className="rule-tags">
+                        {group.providers.map((provider) => (
+                          <span key={provider} className="rule-tag">
+                            {provider}
+                          </span>
+                        ))}
+                      </div>
                     </div>
-                  </div>
 
-                  <button
-                    className="rule-delete"
-                    title="Excluir grupo"
-                    onClick={() => removeGroup(group.id)}
-                  >
-                    ×
-                  </button>
-                </div>
-              ))}
+                    <button
+                      type="button"
+                      className="rule-delete"
+                      title="Excluir grupo"
+                      onClick={() => removeGroup(group.id)}
+                    >
+                      ×
+                    </button>
+                  </div>
+                );
+              })}
 
               {rules.groups.length === 0 && (
                 <p className="rules-empty">
@@ -1440,11 +1458,20 @@ function clearEntrada() {
                 </p>
               )}
             </div>
+            </div>}
 
-            <hr />
+            <button
+              type="button"
+              className={`rule-section-toggle ${collapsedSections.blocked ? "collapsed" : ""}`}
+              aria-expanded={!collapsedSections.blocked}
+              onClick={() => toggleRuleSection("blocked")}
+            >
+              <span className="rule-section-title">2. Restrições por dia da semana</span>
+              <span className="rule-section-count">{rules.blocked.length}</span>
+              <span className={`rule-provider-arrow ${collapsedSections.blocked ? "" : "open"}`}>▾</span>
+            </button>
 
-            <h3>2. Restrições por dia da semana</h3>
-
+            {!collapsedSections.blocked && <div className="rule-section-content">
             <label>
               Prestador
               <select
@@ -1452,9 +1479,9 @@ function clearEntrada() {
                 onChange={(e) => setBlockedProvider(e.target.value)}
               >
                 <option value="">Selecione um prestador</option>
-                {sourceCards.map((card) => (
-                  <option key={card.id} value={card.prestador}>
-                    {card.prestador}
+                {providerNames.map((provider) => (
+                  <option key={provider.toLowerCase()} value={provider}>
+                    {provider}
                   </option>
                 ))}
               </select>
@@ -1512,6 +1539,7 @@ function clearEntrada() {
                     </div>
 
                     <button
+                      type="button"
                       className="rule-delete"
                       title="Excluir restrição"
                       onClick={() => removeBlocked(rule.id)}
@@ -1528,6 +1556,7 @@ function clearEntrada() {
                 </p>
               )}
             </div>
+            </div>}
 
             <div className="dialog-actions">
               <button
